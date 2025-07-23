@@ -1,7 +1,11 @@
 from fastapi import APIRouter, HTTPException, Depends
+from langchain.tools import BaseTool, Tool
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
+from agents.tools import DateTimeTool
 import logging
+
+from agents.function_agent import FunctionAgent
 
 logger = logging.getLogger(__name__)
 
@@ -34,14 +38,33 @@ router = APIRouter(prefix="/api/v1", tags=["langchain"])
 # Global variables for components (would be injected via dependency injection in production)
 rag_chain = None
 react_agent = None
-function_agent = None
+
+def get_function_tools():
+    """Dependency to get tools"""
+    function_tools = [
+        Tool(
+            name="get_current_time",
+            description="Get the current time",
+            func=DateTimeTool()._run
+        )
+    ]
+    return function_tools
+
+def get_function_agent(tools: List[BaseTool] = Depends(get_function_tools)):
+    """Dependency to get Function agent"""
+    function_agent = FunctionAgent(tools)
+    return function_agent
 
 @router.post("/query", response_model=QueryResponse)
-async def query(request: QueryRequest):
+async def query(
+    request: QueryRequest,
+    function_agent: FunctionAgent = Depends(get_function_agent)
+):
     """
     Query the system using different agent types
     """
     try:
+        logger.info(f"Query request: {request.question}")
         if request.agent_type == "rag":
             if not rag_chain:
                 raise HTTPException(status_code=500, detail="RAG chain not initialized")

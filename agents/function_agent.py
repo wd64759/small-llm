@@ -1,8 +1,10 @@
 from langchain.agents import initialize_agent, AgentType
-from langchain.llms import OpenAI
+from langchain_community.chat_models import ChatOpenAI
 from langchain.tools import BaseTool
 from typing import List, Dict, Any
 import logging
+
+from agents.tools import create_llm_model
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +20,7 @@ class FunctionAgent:
             model_name: OpenAI model name
         """
         self.tools = tools
-        self.llm = OpenAI(model_name=model_name, temperature=0)
+        self.llm = create_llm_model(model_name, {"temperature": 0})
         self.agent = None
         self._setup_agent()
     

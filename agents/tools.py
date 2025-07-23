@@ -1,7 +1,7 @@
 from langchain.tools import BaseTool
+from langchain_community.chat_models import ChatOpenAI
 from typing import Optional, List, Dict, Any
-import requests
-import json
+from config.env import Config
 import datetime
 import logging
 
@@ -10,8 +10,8 @@ logger = logging.getLogger(__name__)
 class WebSearchTool(BaseTool):
     """Tool for searching the web"""
     
-    name = "web_search"
-    description = "Search the web for current information"
+    name:str = "web_search"
+    description:str = "Search the web for current information"
     
     def _run(self, query: str) -> str:
         """Execute the web search"""
@@ -30,8 +30,8 @@ class WebSearchTool(BaseTool):
 class CalculatorTool(BaseTool):
     """Tool for mathematical calculations"""
     
-    name = "calculator"
-    description = "Perform mathematical calculations"
+    name:str = "calculator"
+    description:str = "Perform mathematical calculations"
     
     def _run(self, expression: str) -> str:
         """Execute the calculation"""
@@ -54,8 +54,8 @@ class CalculatorTool(BaseTool):
 class DateTimeTool(BaseTool):
     """Tool for getting current date and time"""
     
-    name = "datetime"
-    description = "Get current date and time information"
+    name:str = "datetime"
+    description:str = "Get current date and time information"
     
     def _run(self, timezone: str = "UTC") -> str:
         """Get current datetime"""
@@ -73,8 +73,8 @@ class DateTimeTool(BaseTool):
 class WeatherTool(BaseTool):
     """Tool for getting weather information"""
     
-    name = "weather"
-    description = "Get weather information for a location"
+    name:str = "weather"
+    description:str = "Get weather information for a location"
     
     def _run(self, location: str) -> str:
         """Get weather for location"""
@@ -93,8 +93,8 @@ class WeatherTool(BaseTool):
 class FileReadTool(BaseTool):
     """Tool for reading files"""
     
-    name = "file_read"
-    description = "Read contents of a file"
+    name:str = "file_read"
+    description:str = "Read contents of a file"
     
     def _run(self, file_path: str) -> str:
         """Read file contents"""
@@ -134,3 +134,13 @@ def create_custom_tool(name: str, description: str, func) -> BaseTool:
             return self._run(*args, **kwargs)
     
     return CustomTool() 
+
+def create_llm_model(model_name: str, llm_args: dict):
+    """Create a LLM model"""
+    return ChatOpenAI(
+                model=model_name,
+                base_url=Config.OPENAI_BASE_URL,
+                api_key=Config.OPENAI_API_KEY,
+                temperature=llm_args.pop("temperature", 0.1),
+                **{k: v for k, v in llm_args.items() if k != "model"}
+            )

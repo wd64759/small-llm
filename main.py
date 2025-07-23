@@ -6,6 +6,7 @@ import logging
 
 from config.env import Config
 from api.router import router, initialize_components
+import llm_router
 from utils.logger import setup_logger
 
 # Setup logging
@@ -48,6 +49,7 @@ app.add_middleware(
 
 # Include API router
 app.include_router(router)
+app.include_router(llm_router.router)
 
 @app.get("/")
 async def root():
