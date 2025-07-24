@@ -52,7 +52,7 @@ def get_function_tools():
 
 def get_function_agent(tools: List[BaseTool] = Depends(get_function_tools)):
     """Dependency to get Function agent"""
-    function_agent = FunctionAgent(tools)
+    function_agent = FunctionAgent(tools, model_name="qwen3-8b")
     return function_agent
 
 @router.post("/query", response_model=QueryResponse)
