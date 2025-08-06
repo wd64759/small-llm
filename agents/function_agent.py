@@ -20,7 +20,7 @@ class FunctionAgent:
             model_name: OpenAI model name
         """
         self.tools = tools
-        self.llm = create_llm_model(model_name, {"temperature": 0})
+        self.llm = create_llm_model(model_name, {"extra_body": {"enable_thinking": False}})
         self.agent = None
         self._setup_agent()
     

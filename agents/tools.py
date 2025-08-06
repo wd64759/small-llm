@@ -136,6 +136,12 @@ def create_custom_tool(name: str, description: str, func) -> BaseTool:
     return CustomTool() 
 
 def create_llm_model(model_name: str, llm_args: dict):
+    # by default, enable_thinking is False
+    if "enable_thinking" in llm_args:
+        llm_args["extra_body"] = {"enable_thinking": llm_args.pop("enable_thinking")}
+    else:
+        llm_args["extra_body"] = {"enable_thinking": False}
+
     """Create a LLM model"""
     return ChatOpenAI(
                 model=model_name,
