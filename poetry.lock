@@ -1054,6 +1054,26 @@ test = ["certifi (>=2024)", "cryptography-vectors (==45.0.5)", "pretend (>=0.7)"
 test-randomorder = ["pytest-randomly"]
 
 [[package]]
+name = "dashscope"
+version = "1.24.1"
+description = "dashscope client sdk library"
+optional = false
+python-versions = ">=3.8.0"
+groups = ["main"]
+files = [
+    {file = "dashscope-1.24.1-py3-none-any.whl", hash = "sha256:509241ef8c173e94da58ec4b94d4aacad3a151dc93ead6e5ea12acd27615b127"},
+]
+
+[package.dependencies]
+aiohttp = "*"
+cryptography = "*"
+requests = "*"
+websocket-client = "*"
+
+[package.extras]
+tokenizer = ["tiktoken"]
+
+[[package]]
 name = "dataclasses-json"
 version = "0.6.7"
 description = "Easily serialize dataclasses to and from JSON."
@@ -8900,4 +8920,4 @@ dev = ["black", "flake8", "isort", "mypy", "pytest", "pytest-asyncio"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.9,<4.0"
-content-hash = "fa87ca9f4517eac6fe6d3201bf8a332d8fd22d0f67410efa4e1687084eeb178d"
+content-hash = "f283e8b1cf38faaa6d5e3e1f8ec611b822dc12e39a1e6f9af81198430a65870f"
