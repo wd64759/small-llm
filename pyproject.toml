@@ -6,7 +6,7 @@ authors = [
     {name = "wei dong", email = "wei.dong120@icloud.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.9,<4.0"
+requires-python = ">=3.10,<4.0"
 dependencies = [
     "langchain>=0.1.0",
     "langchain-openai>=0.1.0",
@@ -31,6 +31,8 @@ dependencies = [
     "datasets (>=4.0.0,<5.0.0)",
     "notebook (>=7.4.5,<8.0.0)",
     "dashscope>=1.14.0",
+    "fastmcp (>=2.11.3,<3.0.0)",
+    "socksio (>=1.0.0,<2.0.0)",
 ]
 
 [project.optional-dependencies]

@@ -124,8 +124,8 @@ def create_custom_tool(name: str, description: str, func) -> BaseTool:
     """Create a custom tool from a function"""
     
     class CustomTool(BaseTool):
-        name = name
-        description = description
+        name: str = name
+        description: str = description
         
         def _run(self, *args, **kwargs):
             return func(*args, **kwargs)
