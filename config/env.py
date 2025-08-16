@@ -51,3 +51,9 @@ class Config:
     # API configuration
     API_HOST = EnvConfig.get('API_HOST', '0.0.0.0')
     API_PORT = EnvConfig.get_int('API_PORT', 8000) 
+
+    MYSQL_HOST = EnvConfig.get('MYSQL_HOST', 'localhost')
+    MYSQL_PORT = EnvConfig.get_int('MYSQL_PORT', 3306)
+    MYSQL_USER = EnvConfig.get_required('MYSQL_USER')
+    MYSQL_PASSWORD = EnvConfig.get_required('MYSQL_PASSWORD')
+    MYSQL_DB = EnvConfig.get_required('MYSQL_DB')
