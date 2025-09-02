@@ -57,3 +57,5 @@ class Config:
     MYSQL_USER = EnvConfig.get_required('MYSQL_USER')
     MYSQL_PASSWORD = EnvConfig.get_required('MYSQL_PASSWORD')
     MYSQL_DB = EnvConfig.get_required('MYSQL_DB')
+
+    IS_DEBUG_MODE = EnvConfig.get_bool('IS_DEBUG_MODE', False)

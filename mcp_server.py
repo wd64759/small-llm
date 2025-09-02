@@ -101,6 +101,20 @@ async def health_check_job():
                 logger.error(f"Tool {tool_name} ({tool.url}) is not healthy, response: {response}")
                 del tool_list[i]
 
+async def init_tools():
+    """
+    Init tools
+    This function is used to init the tools.
+    It will init the tools list.
+    """
+    default_tools = [
+        {
+            "name": "google_search",
+            "description": "Google search",
+            "url": "https://www.google.com",
+        }
+    ]
+
 async def main():
     """
     Registry server

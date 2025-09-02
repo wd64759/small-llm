@@ -1,12 +1,11 @@
 import re
 from serpapi import GoogleSearch
 import os
-import requests
-from bs4 import BeautifulSoup
 from pydantic import BaseModel
-from typing import List, Dict, Any
-from langchain_core.tools import tool
+from typing import List
 from dotenv import load_dotenv
+
+from retriever.search_tools import SearchInput, SearchOutput
 
 try:
     from .web_search_utils import load_webpage
@@ -15,7 +14,18 @@ except ImportError:
 
 load_dotenv()
 
-@tool
+class SearchTool(BaseModel):
+    name: str = "google_search"
+    description: str = "Search the web using Google Search API"
+    input: SearchInput
+    output: List[SearchOutput]
+
+    def call(self, query: str, top_p: int = 5):
+        """
+        Search the web using Google Search API
+        """
+        return search(query, top_p)
+
 def search(query: str, top_p: int = 5):
     """
     Search the web using Google Search API

@@ -1,11 +1,14 @@
+from ast import List
 import asyncio
 from datetime import date, datetime
 import re
-from langchain_core.tools import tool
+from langchain_core.tools import Tool, tool
 import os
 
 from dotenv import load_dotenv
 from fastmcp import Client
+
+from retriever.search_tools import SearchInput, SearchOutput
 
 try:
     from .web_search_utils import load_webpage
@@ -47,7 +50,12 @@ async def _search(query: str, top: int = 5):
         )
         return result
 
-@tool
+class BaiduSearchTool(Tool):
+    name: str = "baidu_search"
+    description: str = "Search the web using Baidu Search API"
+    input: SearchInput
+    output: List[SearchOutput]
+
 def search(query: str, top: int = 5):
     """
     Search the web using Baidu Search API
@@ -76,37 +84,7 @@ def search(query: str, top: int = 5):
                 })
     return rs
 
-async def search_async(query: str, top: int = 5):
-    """
-    Async version of search function for direct execution
-    """
-    result = await _search(query, top)
-    
-    if result.is_error:
-        return result.error_message
-    
-    rs = []
-    for content in result.content:
-        if content.type == "text":
-            # content_text = content.text.encode("utf-8").decode("unicode_escape")  
-            blocks = re.split(r'\n\s*\n', content.text.strip())
-            for idx, block in enumerate(blocks):
-                title = re.search(r'Title: (.*)', block).group(1)
-                snippet = re.search(r'Content: (.*)', block).group(1)   
-                url = re.search(r'URL: (.*)', block).group(1)
-                content = load_webpage(url)
-                rs.append({
-                    "source": "baidu",
-                    "id": f"{idx}-{title}",
-                    "title": title,
-                    "link": url,
-                    "content": content,
-                    "snippet": snippet,
-                    "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                })
-                print(rs[-1])
-    return rs
-
 if __name__ == "__main__":
-    rs = asyncio.run(search_async("国内影院票房近期排名？"))
+    # rs = asyncio.run(search_async("国内影院票房近期排名？"))
+    rs = search("国内影院票房近期排名？")
     print(rs)
