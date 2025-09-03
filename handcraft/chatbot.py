@@ -6,10 +6,16 @@ import os
 import json
 
 from dotenv import load_dotenv
+from pydantic import BaseModel
 load_dotenv()
 
+class MCPTool(BaseModel):
+    name: str
+    description: str
+    parameters: dict
+
 class Chatbot:
-    def __init__(self, model: str, system_prompt: str, tools: List[dict] = [], context: str = ""):
+    def __init__(self, model: str, system_prompt: str, tools: List[MCPTool] = [], context: str = ""):
         self.model = model
         self.messages = [
             {"role": "system", "content": system_prompt},
@@ -27,9 +33,9 @@ class Chatbot:
             openai_tools.append({
                 "type": "function",
                 "function": {
-                    "name": tool["name"],
-                    "description": tool["description"],
-                    "parameters": tool["parameters"]
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.parameters
                 }
             })
         return openai_tools
@@ -66,11 +72,9 @@ class Chatbot:
                     if tool_call_delta.function:
                         if tool_call_delta.function.name:
                             current_tool_calls[tool_call_delta.index]["function"]["name"] = tool_call_delta.function.name
+                        # 在流式输出中有可能存在参数被截断的问题，所以需要累加
                         if tool_call_delta.function.arguments:
                             current_tool_calls[tool_call_delta.index]["function"]["arguments"] += tool_call_delta.function.arguments
-                    
-                    print("tool_call>>>>>>>>>>>>>>>>")
-                    print(f"Index: {tool_call_delta.index}, Name: {current_tool_calls[tool_call_delta.index]['function']['name']}")
         
         # Convert completed tool calls to proper format
         tool_calls = []
@@ -80,7 +84,7 @@ class Chatbot:
         
         return tool_calls, full_response
 
-    def _execute_tool_calls(self, tool_calls):
+    async def _execute_tool_calls(self, tool_calls):
         """Execute tool calls and return results"""
         if not tool_calls:
             return []
@@ -103,7 +107,7 @@ class Chatbot:
             
             # Find and execute the tool
             for tool in self.tools:
-                if tool["name"] == tool_name:
+                if tool.name == tool_name:
                     try:
                         # Parse arguments if provided
                         args = {}
@@ -111,10 +115,13 @@ class Chatbot:
                             args = json.loads(tool_args)
                         
                         # Call the tool function with arguments
-                        if args:
-                            result = tool["func"](**args)
+                        if hasattr(tool, "func"):
+                            if args:
+                                result = tool.func(**args)
+                            else:
+                                result = tool.func()
                         else:
-                            result = tool["func"]()
+                            result = await mcp_tool_call(tool_name, args)
                             
                         tool_results.append({
                             "tool_call_id": tool_call["id"],
@@ -133,7 +140,7 @@ class Chatbot:
             
         return tool_results
 
-    def _make_api_call(self, messages, tools=None):
+    def _make_llm_call(self, messages, tools=None):
         """Make API call and return response"""
         client = OpenAI(
             api_key=os.getenv("DASHSCOPE_API_KEY"),
@@ -162,7 +169,7 @@ class Chatbot:
         
         # Convert tools to OpenAI format
         openai_tools = self._convert_tools_to_openai_format()
-        print(f"Available tools: {[tool['name'] for tool in self.tools]}")
+        print(f"Available tools: {[tool.name for tool in self.tools]}")
         
         iteration = 0
         while iteration < self.max_iterations:
@@ -170,7 +177,7 @@ class Chatbot:
             print(f"\n--- Iteration {iteration} ---")
             
             # Make API call
-            stream_response = self._make_api_call(self.messages, openai_tools)
+            stream_response = self._make_llm_call(self.messages, openai_tools)
             
             # Process streaming response
             tool_calls, full_response = self._assemble_tool_calls_from_stream(stream_response)
@@ -183,7 +190,7 @@ class Chatbot:
                 break
             
             # Execute tool calls
-            tool_results = self._execute_tool_calls(tool_calls)
+            tool_results = await self._execute_tool_calls(tool_calls)
             
             # If no tool results, we're done
             if not tool_results:
@@ -195,43 +202,43 @@ class Chatbot:
         
         print("\ndone")
 
-def get_location():
-    return "北京"
-
-def get_weather(location: str = "北京"):
-    return f"{location}今天天气晴朗"
-
-def get_news(location: str):
-    return "今天新闻是，北京天气晴朗"
+async def mcp_tool_call(tool_name: str, args: dict):
+    params = StdioServerParameters(
+        command="/Users/dongwei/Library/Caches/pypoetry/virtualenvs/langchain-project-y8rcUVU--py3.12/bin/python",
+        args=["handcraft/mcp_tools.py"]
+    )
+    async with stdio_client(params) as (read_stream, write_stream):
+        async with ClientSession(read_stream, write_stream) as session:
+            await session.initialize()
+            response = await session.call_tool(tool_name, args)
+            return response
 
 if __name__ == "__main__":
-    tools = [
-        {
-            "name": "get_location", 
-            "func": get_location, 
-            "description": "Get user's location", 
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
-        },
-        {
-            "name": "get_weather", 
-            "func": get_weather, 
-            "description": "Get the weather for a specific location", 
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "location": {
-                        "type": "string",
-                        "description": "The location to get the weather for"
-                    }
-                },
-                "required": ["location"]
-            }
-        }
-    ]
-    chatbot = Chatbot(model="qwen-max", system_prompt="You are a helpful assistant. You have access to tools that you can use to help answer questions. When you need information that can be obtained through tools, please use them.", tools=tools, context="")
+
+    from mcp import ClientSession, StdioServerParameters
+    from mcp.client.stdio import stdio_client
+    
+    async def main():
+        params = StdioServerParameters(
+            command="/Users/dongwei/Library/Caches/pypoetry/virtualenvs/langchain-project-y8rcUVU--py3.12/bin/python",
+            args=["handcraft/mcp_tools.py"]
+        )
+        async with stdio_client(params) as (read_stream, write_stream):
+            async with ClientSession(read_stream, write_stream) as session:
+                await session.initialize()
+                tools = await session.list_tools()
+                print("Tools", tools)
+                response = await session.call_tool("get_weather", {"location": "北京"})
+                print("Response", response)
+                return tools
+        
+        # tools = []
+        # chatbot = Chatbot(model="qwen-max", system_prompt="", tools=tools, context="")
+        # asyncio.run(chatbot.chat("你好，帮我查一下今天的天气怎么样"))
+        # print(chatbot.messages)
+    
+    list_tools = asyncio.run(main())
+    tools = [MCPTool(name=tool.name, description=tool.description, parameters=tool.inputSchema) for tool in list_tools.tools]
+    chatbot = Chatbot(model="qwen-max", system_prompt="", tools=tools, context="")
     asyncio.run(chatbot.chat("你好，帮我查一下今天的天气怎么样"))
     print(chatbot.messages)
