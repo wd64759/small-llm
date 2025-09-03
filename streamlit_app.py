@@ -1,3 +1,4 @@
+from mcp import ClientSession, StdioServerParameters, stdio_client
 import streamlit as st
 import asyncio
 import json
@@ -12,65 +13,6 @@ PREDEFINED_CHATBOTS = {
     }
 }
 
-# 可用的工具
-AVAILABLE_TOOLS = {
-    "get_location": {
-        "name": "get_location",
-        "func": lambda: "北京",
-        "description": "Get user's location",
-        "parameters": {
-            "type": "object",
-            "properties": {},
-            "required": []
-        }
-    },
-    "get_weather": {
-        "name": "get_weather",
-        "func": lambda location="北京": f"{location}今天天气晴朗",
-        "description": "Get the weather for a specific location",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "location": {
-                    "type": "string",
-                    "description": "The location to get the weather for"
-                }
-            },
-            "required": ["location"]
-        }
-    },
-    "get_news": {
-        "name": "get_news",
-        "func": lambda location="北京": f"{location}的新闻：今天天气晴朗",
-        "description": "Get the latest news for a specific location",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "location": {
-                    "type": "string",
-                    "description": "The location to get news for"
-                }
-            },
-            "required": ["location"]
-        }
-    },
-    "calculate": {
-        "name": "calculate",
-        "func": lambda expression: eval(expression),
-        "description": "Perform mathematical calculations",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "expression": {
-                    "type": "string",
-                    "description": "The mathematical expression to evaluate"
-                }
-            },
-            "required": ["expression"]
-        }
-    }
-}
-
 def initialize_session_state():
     """初始化会话状态"""
     if 'messages' not in st.session_state:
@@ -79,6 +21,19 @@ def initialize_session_state():
         st.session_state.chatbot = None
     if 'selected_tools' not in st.session_state:
         st.session_state.selected_tools = []
+
+async def get_available_tools():
+    """获取可用的工具"""
+    std_params = StdioServerParameters(
+        command="/Users/dongwei/Library/Caches/pypoetry/virtualenvs/langchain-project-y8rcUVU--py3.12/bin/python",
+        args=["handcraft/mcp_tools.py"]
+    )
+    async with stdio_client(std_params) as (read_stream, write_stream):
+        async with ClientSession(read_stream, write_stream) as session:
+            await session.initialize()
+            list_tools = await session.list_tools()
+            tools = [chatbot.MCPTool(name=tool.name, description=tool.description, parameters=tool.inputSchema) for tool in list_tools.tools]
+            return tools
 
 def create_control_panel():
     """创建左侧控制面板"""
@@ -91,10 +46,6 @@ def create_control_panel():
         list(PREDEFINED_CHATBOTS.keys()),
         help="选择一个预定义的对话机器人配置"
     )
-    
-    # 显示选中机器人的描述
-    if selected_bot != "自定义":
-        st.sidebar.info(f"**{selected_bot}**: {PREDEFINED_CHATBOTS[selected_bot]['description']}")
     
     # 系统提示词设置
     # st.sidebar.subheader("系统提示词")
@@ -127,13 +78,14 @@ def create_control_panel():
     st.sidebar.write("选择要启用的工具:")
     
     selected_tools = []
-    for tool_name, tool_info in AVAILABLE_TOOLS.items():
+    tools = asyncio.run(get_available_tools())
+    for tool in tools:
         if st.sidebar.checkbox(
-            f"🔧 {tool_name}",
-            value=tool_name in ["get_location", "get_weather"],  # 默认选中常用工具
-            help=tool_info['description']
+            f"🔧 {tool.name}",
+            value=tool.name in ["get_location"],  # 默认选中常用工具
+            help=tool.description
         ):
-            selected_tools.append(tool_info)
+            selected_tools.append(tool)
     
     # 创建/更新聊天机器人按钮
     if st.sidebar.button("🚀 创建/更新聊天机器人", type="primary"):
@@ -157,7 +109,7 @@ def create_control_panel():
         st.sidebar.write(f"**工具数量**: {len(st.session_state.selected_tools)}")
         st.sidebar.write("**已选工具**:")
         for tool in st.session_state.selected_tools:
-            st.sidebar.write(f"  - {tool['name']}")
+            st.sidebar.write(f"  - {tool.name}")
     
     # 清空对话按钮
     if st.sidebar.button("🗑️ 清空对话历史"):

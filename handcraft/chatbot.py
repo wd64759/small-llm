@@ -7,6 +7,8 @@ import json
 
 from dotenv import load_dotenv
 from pydantic import BaseModel
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 load_dotenv()
 
 class MCPTool(BaseModel):
@@ -215,8 +217,6 @@ async def mcp_tool_call(tool_name: str, args: dict):
 
 if __name__ == "__main__":
 
-    from mcp import ClientSession, StdioServerParameters
-    from mcp.client.stdio import stdio_client
     
     async def main():
         params = StdioServerParameters(
@@ -231,11 +231,6 @@ if __name__ == "__main__":
                 response = await session.call_tool("get_weather", {"location": "北京"})
                 print("Response", response)
                 return tools
-        
-        # tools = []
-        # chatbot = Chatbot(model="qwen-max", system_prompt="", tools=tools, context="")
-        # asyncio.run(chatbot.chat("你好，帮我查一下今天的天气怎么样"))
-        # print(chatbot.messages)
     
     list_tools = asyncio.run(main())
     tools = [MCPTool(name=tool.name, description=tool.description, parameters=tool.inputSchema) for tool in list_tools.tools]
