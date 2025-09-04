@@ -13,6 +13,12 @@ PREDEFINED_CHATBOTS = {
     }
 }
 
+PREDEFINED_MODELS = {
+    "qwen-max": "qwen-max",
+    "qwen-turbo": "qwen-turbo",
+    "qwen-plus": "qwen-plus"
+}
+
 def initialize_session_state():
     """初始化会话状态"""
     if 'messages' not in st.session_state:
@@ -36,6 +42,7 @@ async def get_available_tools():
             return tools
 
 def create_control_panel():
+
     """创建左侧控制面板"""
     st.sidebar.title("🤖 对话控制面板")
     
@@ -68,14 +75,17 @@ def create_control_panel():
     # st.sidebar.subheader("模型设置")
     model = st.sidebar.selectbox(
         "选择模型:",
-        ["qwen-max", "qwen-turbo", "qwen-plus"],
+        list(PREDEFINED_MODELS.keys()),
         index=0,
         help="选择要使用的AI模型"
     )
+
+    depth_thinking = st.sidebar.checkbox("深度思考", value=True, help="启用深度思考")
+    debug_enabled = st.sidebar.checkbox("调试", value=True, help="启用调试模式")
     
     # 工具选择
     # st.sidebar.subheader("可用工具")
-    st.sidebar.write("选择要启用的工具:")
+    st.sidebar.write("选择挂载工具:")
     
     selected_tools = []
     tools = asyncio.run(get_available_tools())
@@ -91,25 +101,18 @@ def create_control_panel():
     if st.sidebar.button("🚀 创建/更新聊天机器人", type="primary"):
         if selected_tools:
             st.session_state.chatbot = chatbot.Chatbot(
-                model=model,
+                model=PREDEFINED_MODELS[model],
                 system_prompt=system_prompt,
                 tools=selected_tools,
-                context=""
+                context="",
+                depth_thinking=depth_thinking,
+                debug=debug_enabled
             )
             st.session_state.selected_tools = selected_tools
             st.session_state.messages = []  # 清空对话历史
             st.success("✅ 聊天机器人已创建/更新！")
         else:
             st.error("❌ 请至少选择一个工具！")
-    
-    # 显示当前配置
-    if st.session_state.chatbot:
-        st.sidebar.subheader("当前配置")
-        st.sidebar.write(f"**模型**: {st.session_state.chatbot.model}")
-        st.sidebar.write(f"**工具数量**: {len(st.session_state.selected_tools)}")
-        st.sidebar.write("**已选工具**:")
-        for tool in st.session_state.selected_tools:
-            st.sidebar.write(f"  - {tool.name}")
     
     # 清空对话按钮
     if st.sidebar.button("🗑️ 清空对话历史"):
@@ -124,7 +127,9 @@ def create_chat_interface():
     if not st.session_state.chatbot:
         st.warning("⚠️ 请在左侧控制面板创建聊天机器人后再开始对话！")
         return
-    
+    else:
+        st.markdown(":green-badge[" + st.session_state.chatbot.model + "] " + "".join([f":violet-badge[:material/check: {tool.name}] " for tool in st.session_state.selected_tools]))
+
     # 显示对话历史
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):

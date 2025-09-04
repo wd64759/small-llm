@@ -7,8 +7,7 @@ import json
 
 from dotenv import load_dotenv
 from pydantic import BaseModel
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+from mcp import ClientSession, StdioServerParameters, stdio_client
 load_dotenv()
 
 class MCPTool(BaseModel):
@@ -17,7 +16,7 @@ class MCPTool(BaseModel):
     parameters: dict
 
 class Chatbot:
-    def __init__(self, model: str, system_prompt: str, tools: List[MCPTool] = [], context: str = ""):
+    def __init__(self, model: str, system_prompt: str, tools: List[MCPTool] = [], context: str = "", depth_thinking: bool = False, debug: bool = False):
         self.model = model
         self.messages = [
             {"role": "system", "content": system_prompt},
@@ -25,9 +24,11 @@ class Chatbot:
         if context and len(context) > 0:
             self.messages.append({"role": "user", "content": context})
         self.tools = tools
-        self.temperature = 0
+        self.temperature = 0.2
         self.max_iterations = 5  # 防止无限循环
-
+        self.depth_thinking = depth_thinking
+        self.debug = debug
+        
     def _convert_tools_to_openai_format(self):
         """Convert tools to OpenAI format"""
         openai_tools = []
@@ -46,11 +47,19 @@ class Chatbot:
         """Assemble complete tool calls from streaming response"""
         current_tool_calls = {}
         full_response = ""
+        total_tokens = 0
         
         for chunk in stream_response:
+            # DashScope API 的 usage 信息可能在不同位置
+            if hasattr(chunk, 'usage') and chunk.usage is not None:
+                if hasattr(chunk.usage, 'total_tokens'):
+                    total_tokens = chunk.usage.total_tokens
+                else:
+                    print(f"Usage object exists but no total_tokens attribute")
+            
+            # 检查 choices 是否为空
             if not chunk.choices or len(chunk.choices) == 0:
                 continue
-                
             delta = chunk.choices[0].delta
             if delta and delta.content:
                 print(delta.content, end="", flush=True)
@@ -84,7 +93,7 @@ class Chatbot:
             if tool_call_data["function"]["name"]:  # Only add if name is not empty
                 tool_calls.append(tool_call_data)
         
-        return tool_calls, full_response
+        return tool_calls, full_response, total_tokens
 
     async def _execute_tool_calls(self, tool_calls):
         """Execute tool calls and return results"""
@@ -156,18 +165,22 @@ class Chatbot:
             "temperature": self.temperature,
             "stream_options": {
                 "include_usage": True
-            }
+            },
+            # "has_thoughts": self.depth_thinking and self.debug
         }
+        kwargs["extra_body"] = {"enable_thinking": self.depth_thinking}
         
         if tools:
             kwargs["tools"] = tools
-            
+    
+        print("llm call kwargs: ", kwargs)
         return client.chat.completions.create(**kwargs)
 
     async def chat(self, prompt: str):
         """Main chat method that supports multiple tool calls"""
         # Add the user's prompt to messages
         self.messages.append({"role": "user", "content": prompt})
+        total_tokens = 0
         
         # Convert tools to OpenAI format
         openai_tools = self._convert_tools_to_openai_format()
@@ -180,10 +193,11 @@ class Chatbot:
             
             # Make API call
             stream_response = self._make_llm_call(self.messages, openai_tools)
+            print(f"Stream response: {stream_response}")
             
             # Process streaming response
-            tool_calls, full_response = self._assemble_tool_calls_from_stream(stream_response)
-            
+            tool_calls, full_response, total_tokens_from_stream = self._assemble_tool_calls_from_stream(stream_response)
+            total_tokens += total_tokens_from_stream
             # If no tool calls, we're done
             if not tool_calls:
                 if full_response:
@@ -202,6 +216,7 @@ class Chatbot:
         if iteration >= self.max_iterations:
             print("\n--- Maximum iterations reached ---")
         
+        print(f"Total tokens: {total_tokens}")
         print("\ndone")
 
 async def mcp_tool_call(tool_name: str, args: dict):
@@ -234,6 +249,6 @@ if __name__ == "__main__":
     
     list_tools = asyncio.run(main())
     tools = [MCPTool(name=tool.name, description=tool.description, parameters=tool.inputSchema) for tool in list_tools.tools]
-    chatbot = Chatbot(model="qwen-max", system_prompt="", tools=tools, context="")
+    chatbot = Chatbot(model="qwen-max", system_prompt="", tools=tools, context="", depth_thinking=True, debug=True)
     asyncio.run(chatbot.chat("你好，帮我查一下今天的天气怎么样"))
     print(chatbot.messages)
