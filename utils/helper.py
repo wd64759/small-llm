@@ -4,8 +4,12 @@ import hashlib
 from typing import Any, Dict, List, Optional, Union
 from datetime import datetime
 import logging
+import uuid
 
 logger = logging.getLogger(__name__)
+
+def get_uuid() -> str:
+    return str(uuid.uuid4())
 
 def ensure_directory(directory_path: str) -> bool:
     """

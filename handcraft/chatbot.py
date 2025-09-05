@@ -1,5 +1,7 @@
 import asyncio
-from langchain_core.tools import Tool
+import logging
+import threading
+import time
 from typing import List
 from openai import OpenAI
 import os
@@ -8,7 +10,28 @@ import json
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from mcp import ClientSession, StdioServerParameters, stdio_client
+
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from handcraft.chat_report import ChatReport, ToolCall
+from utils.helper import get_uuid
 load_dotenv()
+
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler()  # 输出到控制台
+    ]
+)
+
+logger = logging.getLogger(__name__)
+
+thread_local = threading.local()
+thread_local.tool_call_index = 1
 
 class MCPTool(BaseModel):
     name: str
@@ -114,12 +137,13 @@ class Chatbot:
         for tool_call in tool_calls:
             tool_name = tool_call["function"]["name"]
             tool_args = tool_call["function"]["arguments"]
-            print(f"Calling tool: {tool_name} with args: {tool_args}")
+            logger.info(f"Calling tool: {tool_name} with args: {tool_args}")
             
             # Find and execute the tool
             for tool in self.tools:
                 if tool.name == tool_name:
                     try:
+                        start_time = time.time()
                         # Parse arguments if provided
                         args = {}
                         if tool_args:
@@ -133,16 +157,20 @@ class Chatbot:
                                 result = tool.func()
                         else:
                             result = await mcp_tool_call(tool_name, args)
-                            
+                        
+
+                        tool_call_record = ToolCall(tool_name, thread_local.tool_call_index, args, str(result), time.time() - start_time)
+                        thread_local.tool_call_index += 1
+                        thread_local.llm_call.add_tool_call(tool_call_record)
+
                         tool_results.append({
                             "tool_call_id": tool_call["id"],
                             "role": "tool",
                             "name": tool_name,
                             "content": str(result)
                         })
-                        print(f"Tool result: {result}")
                     except Exception as e:
-                        print(f"Tool execution error: {e}")
+                        logger.error(f"Tool {tool_name} execution error: {e}")
                     break
         
         # Add tool results to messages
@@ -172,52 +200,51 @@ class Chatbot:
         
         if tools:
             kwargs["tools"] = tools
-    
-        print("llm call kwargs: ", kwargs)
         return client.chat.completions.create(**kwargs)
 
-    async def chat(self, prompt: str):
+    async def chat(self, prompt: str) -> ChatReport:
         """Main chat method that supports multiple tool calls"""
         # Add the user's prompt to messages
         self.messages.append({"role": "user", "content": prompt})
         total_tokens = 0
-        
+        chat_report = ChatReport()
         # Convert tools to OpenAI format
         openai_tools = self._convert_tools_to_openai_format()
-        print(f"Available tools: {[tool.name for tool in self.tools]}")
-        
+        start_time = time.time()
         iteration = 0
         while iteration < self.max_iterations:
             iteration += 1
-            print(f"\n--- Iteration {iteration} ---")
+            llm_call = chat_report.start_llm_call(get_uuid())
+            thread_local.llm_call = llm_call
             
             # Make API call
             stream_response = self._make_llm_call(self.messages, openai_tools)
-            print(f"Stream response: {stream_response}")
+            end_time = time.time()
             
             # Process streaming response
             tool_calls, full_response, total_tokens_from_stream = self._assemble_tool_calls_from_stream(stream_response)
+            llm_call.complete(prompt, full_response, end_time - start_time, total_tokens_from_stream)
             total_tokens += total_tokens_from_stream
             # If no tool calls, we're done
             if not tool_calls:
                 if full_response:
                     self.messages.append({"role": "assistant", "content": full_response})
-                print("\n--- Conversation complete ---")
                 break
             
             # Execute tool calls
             tool_results = await self._execute_tool_calls(tool_calls)
-            
             # If no tool results, we're done
             if not tool_results:
-                print("\n--- No tool results, conversation complete ---")
+                logger.info("\n--- No tool results, conversation complete ---")
                 break
         
         if iteration >= self.max_iterations:
-            print("\n--- Maximum iterations reached ---")
+            logger.info("\n--- Maximum iterations reached ---")
         
-        print(f"Total tokens: {total_tokens}")
-        print("\ndone")
+        logger.info(f"Total tokens: {total_tokens}")
+        thread_local.llm_call = None
+        thread_local.tool_call_index = 1
+        return chat_report
 
 async def mcp_tool_call(tool_name: str, args: dict):
     params = StdioServerParameters(
@@ -250,5 +277,5 @@ if __name__ == "__main__":
     list_tools = asyncio.run(main())
     tools = [MCPTool(name=tool.name, description=tool.description, parameters=tool.inputSchema) for tool in list_tools.tools]
     chatbot = Chatbot(model="qwen-max", system_prompt="", tools=tools, context="", depth_thinking=True, debug=True)
-    asyncio.run(chatbot.chat("你好，帮我查一下今天的天气怎么样"))
-    print(chatbot.messages)
+    chat_report = asyncio.run(chatbot.chat("你好，帮我查一下今天的天气怎么样"))
+    logger.info(json.dumps(chat_report.to_dict(), ensure_ascii=False, indent=4))
