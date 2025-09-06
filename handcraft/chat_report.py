@@ -22,11 +22,11 @@ class LLMCall:
         self.session_id = session_id
         self.tool_calls = []
 
-    def complete(self, query, response, timecost, total_tokens):
+    def complete(self, query, response, timecost, token_usage):
         self.query = query
         self.response = str(response)
         self.timecost = timecost
-        self.total_tokens = total_tokens
+        self.token_usage = token_usage
 
     def add_tool_call(self, tool_call):
         self.tool_calls.append(tool_call)
@@ -37,13 +37,14 @@ class LLMCall:
             "query": self.query,
             "response": self.response,
             "timecost": self.timecost,
-            "total_tokens": self.total_tokens,
+            "token_usage": self.token_usage,
             "tool_calls": [tool_call.to_dict() for tool_call in self.tool_calls]
         }
 
 class ChatReport:
     def __init__(self):
         self.llm_calls = []
+        self.total_tokens = 0
 
     def start_llm_call(self, session_id)->LLMCall:
         llm_call = LLMCall(session_id)

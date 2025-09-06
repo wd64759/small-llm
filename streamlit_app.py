@@ -27,6 +27,12 @@ def initialize_session_state():
         st.session_state.chatbot = None
     if 'selected_tools' not in st.session_state:
         st.session_state.selected_tools = []
+    if 'debug_info' not in st.session_state:
+        st.session_state.debug_info = {
+            'chat_reports': [],
+            'llm_messages': [],
+            'cot_info': []
+        }
 
 async def get_available_tools():
     """获取可用的工具"""
@@ -117,6 +123,11 @@ def create_control_panel():
     # 清空对话按钮
     if st.sidebar.button("🗑️ 清空对话历史"):
         st.session_state.messages = []
+        st.session_state.debug_info = {
+            'chat_reports': [],
+            'llm_messages': [],
+            'cot_info': []
+        }
         st.rerun()
 
 def create_chat_interface():
@@ -159,9 +170,16 @@ def create_chat_interface():
                 import nest_asyncio
                 nest_asyncio.apply()
                 
-                # 运行聊天
+                # 运行聊天并获取报告
                 loop = asyncio.get_event_loop()
-                loop.run_until_complete(st.session_state.chatbot.chat(prompt))
+                chat_report = loop.run_until_complete(st.session_state.chatbot.chat(prompt))
+                
+                # 保存调试信息
+                st.session_state.debug_info['chat_reports'].append(chat_report.to_dict())
+                st.session_state.debug_info['llm_messages'].append({
+                    'prompt': prompt,
+                    'messages': st.session_state.chatbot.messages.copy()
+                })
                 
                 # 获取最新的助手回复
                 if st.session_state.chatbot.messages:
@@ -191,6 +209,46 @@ def create_chat_interface():
         st.sidebar.write(f"🤖 助手回复: {assistant_messages}")
         st.sidebar.write(f"🔧 工具调用: {tool_calls}")
 
+def create_debug_area():
+    """创建调试区域"""
+    st.markdown("---")
+    st.subheader("🔍 调试信息")
+    
+    # 创建tab
+    tab1, tab2, tab3 = st.tabs(["📝 Messages", "📊 Chat Reports", "🧠 COT Info"])
+    
+    with tab1:
+        st.markdown("### LLM Messages 内容")
+        if st.session_state.debug_info['llm_messages']:
+            for i, msg_data in enumerate(st.session_state.debug_info['llm_messages']):
+                with st.expander(f"对话 #{i+1}: {msg_data['prompt'][:50]}..."):
+                    st.markdown("**用户输入:**")
+                    st.code(msg_data['prompt'], language="text")
+                    
+                    st.markdown("**完整 Messages:**")
+                    st.json(msg_data['messages'])
+        else:
+            st.info("暂无消息记录")
+    
+    with tab2:
+        st.markdown("### Chat Reports 历史")
+        if st.session_state.debug_info['chat_reports']:
+            for i, report in enumerate(st.session_state.debug_info['chat_reports']):
+                with st.expander(f"报告 #{i+1}"):
+                    st.json(report)
+        else:
+            st.info("暂无聊天报告")
+    
+    with tab3:
+        st.markdown("### Chain of Thought (COT) 信息")
+        st.info("此功能预留用于显示LLM的推理过程信息")
+        if st.session_state.debug_info['cot_info']:
+            for i, cot in enumerate(st.session_state.debug_info['cot_info']):
+                with st.expander(f"COT #{i+1}"):
+                    st.json(cot)
+        else:
+            st.info("暂无COT信息")
+
 def main():
     """主函数"""
     st.set_page_config(
@@ -211,6 +269,9 @@ def main():
     
     with col2:
         create_chat_interface()
+    
+    # 添加调试区域
+    create_debug_area()
 
 if __name__ == "__main__":
     main()

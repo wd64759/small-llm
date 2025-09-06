@@ -71,21 +71,24 @@ class Chatbot:
         current_tool_calls = {}
         full_response = ""
         total_tokens = 0
-        
+        prompt_tokens = 0
+        completion_tokens = 0
+
         for chunk in stream_response:
             # DashScope API 的 usage 信息可能在不同位置
             if hasattr(chunk, 'usage') and chunk.usage is not None:
                 if hasattr(chunk.usage, 'total_tokens'):
                     total_tokens = chunk.usage.total_tokens
-                else:
-                    print(f"Usage object exists but no total_tokens attribute")
+                if hasattr(chunk.usage, 'prompt_tokens'):
+                    prompt_tokens = chunk.usage.prompt_tokens
+                if hasattr(chunk.usage, 'completion_tokens'):
+                    completion_tokens = chunk.usage.completion_tokens
             
             # 检查 choices 是否为空
             if not chunk.choices or len(chunk.choices) == 0:
                 continue
             delta = chunk.choices[0].delta
             if delta and delta.content:
-                print(delta.content, end="", flush=True)
                 full_response += delta.content
             elif delta and delta.tool_calls:
                 for tool_call_delta in delta.tool_calls:
@@ -116,7 +119,7 @@ class Chatbot:
             if tool_call_data["function"]["name"]:  # Only add if name is not empty
                 tool_calls.append(tool_call_data)
         
-        return tool_calls, full_response, total_tokens
+        return tool_calls, full_response, {"total_tokens": total_tokens, "prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens}
 
     async def _execute_tool_calls(self, tool_calls):
         """Execute tool calls and return results"""
@@ -158,8 +161,12 @@ class Chatbot:
                         else:
                             result = await mcp_tool_call(tool_name, args)
                         
-
-                        tool_call_record = ToolCall(tool_name, thread_local.tool_call_index, args, str(result), time.time() - start_time)
+                        reformat_result = {
+                            "structured_output": result.structuredContent if hasattr(result, "structuredContent") else None,
+                            "text": " ".join(t.text for t in result.content) if hasattr(result, "content") else "",
+                            "error": result.isError if hasattr(result, "isError") else False
+                        }
+                        tool_call_record = ToolCall(tool_name, thread_local.tool_call_index, args, reformat_result, time.time() - start_time)
                         thread_local.tool_call_index += 1
                         thread_local.llm_call.add_tool_call(tool_call_record)
 
@@ -170,7 +177,7 @@ class Chatbot:
                             "content": str(result)
                         })
                     except Exception as e:
-                        logger.error(f"Tool {tool_name} execution error: {e}")
+                        logger.error(f"Tool {tool_name} execution error: {e}", e)
                     break
         
         # Add tool results to messages
@@ -208,13 +215,16 @@ class Chatbot:
         self.messages.append({"role": "user", "content": prompt})
         total_tokens = 0
         chat_report = ChatReport()
+        # 初始化线程本地变量
+        thread_local.session_id = get_uuid()
+        thread_local.tool_call_index = 1
         # Convert tools to OpenAI format
         openai_tools = self._convert_tools_to_openai_format()
         start_time = time.time()
         iteration = 0
         while iteration < self.max_iterations:
             iteration += 1
-            llm_call = chat_report.start_llm_call(get_uuid())
+            llm_call = chat_report.start_llm_call(thread_local.session_id)
             thread_local.llm_call = llm_call
             
             # Make API call
@@ -222,9 +232,9 @@ class Chatbot:
             end_time = time.time()
             
             # Process streaming response
-            tool_calls, full_response, total_tokens_from_stream = self._assemble_tool_calls_from_stream(stream_response)
-            llm_call.complete(prompt, full_response, end_time - start_time, total_tokens_from_stream)
-            total_tokens += total_tokens_from_stream
+            tool_calls, full_response, token_usage = self._assemble_tool_calls_from_stream(stream_response)
+            llm_call.complete(prompt, full_response, end_time - start_time, token_usage)
+            total_tokens += token_usage["total_tokens"]
             # If no tool calls, we're done
             if not tool_calls:
                 if full_response:
@@ -244,6 +254,7 @@ class Chatbot:
         logger.info(f"Total tokens: {total_tokens}")
         thread_local.llm_call = None
         thread_local.tool_call_index = 1
+        chat_report.total_tokens = total_tokens
         return chat_report
 
 async def mcp_tool_call(tool_name: str, args: dict):
