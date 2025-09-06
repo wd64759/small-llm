@@ -25,7 +25,7 @@ class LLMCall:
     def complete(self, query, response, timecost, token_usage):
         self.query = query
         self.response = str(response)
-        self.timecost = timecost
+        self.timecost = f"{timecost:.2f}s"
         self.token_usage = token_usage
 
     def add_tool_call(self, tool_call):

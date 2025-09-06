@@ -233,9 +233,76 @@ def create_debug_area():
     with tab2:
         st.markdown("### Chat Reports 历史")
         if st.session_state.debug_info['chat_reports']:
-            for i, report in enumerate(st.session_state.debug_info['chat_reports']):
-                with st.expander(f"报告 #{i+1}"):
-                    st.json(report)
+            # 准备表格数据
+            table_data = []
+            
+            for report_idx, report in enumerate(st.session_state.debug_info['chat_reports']):
+                for llm_call in report.get('llm_calls', []):
+                    # LLM Call 行
+                    llm_row = {
+                        "对话": f"#{report_idx + 1}",
+                        "类型": "LLM Call",
+                        "查询": llm_call.get('query', '')[:50] + "..." if len(llm_call.get('query', '')) > 50 else llm_call.get('query', ''),
+                        "耗时": llm_call.get('timecost', ''),
+                        "Token使用": llm_call.get('token_usage', {}).get('total_tokens', 0),
+                        "工具调用数": len(llm_call.get('tool_calls', [])),
+                        "响应": llm_call.get('response', '')[:80] + "..." if len(llm_call.get('response', '')) > 80 else llm_call.get('response', '')
+                    }
+                    table_data.append(llm_row)
+                    
+                    # Tool Call 行
+                    for tool_call in llm_call.get('tool_calls', []):
+                        tool_row = {
+                            "对话": f"#{report_idx + 1}",
+                            "类型": "Tool Call",
+                            "查询": tool_call.get('name', ''),
+                            "耗时": f"{tool_call.get('timecost', 0):.2f}s",
+                            "Token使用": 0,  # 改为数字0而不是字符串"-"
+                            "工具调用数": 0,  # 改为数字0而不是字符串"-"
+                             "响应": str(tool_call.get('result', ''))[:80] + "..." if len(str(tool_call.get('result', ''))) > 80 else str(tool_call.get('result', ''))
+                        }
+                        table_data.append(tool_row)
+            
+            if table_data:
+                # 创建表格
+                import pandas as pd
+                df = pd.DataFrame(table_data)
+                
+                # 显示表格
+                st.dataframe(
+                    df,
+                    width='stretch',  # 替换 use_container_width=True
+                    hide_index=True,
+                    column_config={
+                        "对话": st.column_config.TextColumn("对话", width="small"),
+                        "类型": st.column_config.TextColumn("类型", width="small"),
+                        "查询": st.column_config.TextColumn("查询/工具名", width="small"),
+                        "耗时": st.column_config.TextColumn("耗时", width="small"),
+                        "Token使用": st.column_config.NumberColumn("Token", width="small", format="%d"),
+                        "工具调用数": st.column_config.NumberColumn("工具数", width="small", format="%d"),
+                        "响应": st.column_config.TextColumn("响应/结果", width="large")
+                    }
+                )
+                
+                # 添加统计信息
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("总对话数", len(st.session_state.debug_info['chat_reports']))
+                with col2:
+                    llm_calls_count = sum(len(report.get('llm_calls', [])) for report in st.session_state.debug_info['chat_reports'])
+                    st.metric("LLM调用数", llm_calls_count)
+                with col3:
+                    tool_calls_count = sum(len(tool_call.get('tool_calls', [])) for report in st.session_state.debug_info['chat_reports'] for tool_call in report.get('llm_calls', []))
+                    st.metric("工具调用数", tool_calls_count)
+                with col4:
+                    total_tokens = sum(
+                        llm_call.get('token_usage', {}).get('total_tokens', 0) 
+                        for report in st.session_state.debug_info['chat_reports'] 
+                        for llm_call in report.get('llm_calls', [])
+                    )
+                    st.metric("总Token数", total_tokens)
+            else:
+                st.info("暂无聊天报告数据")
         else:
             st.info("暂无聊天报告")
     
