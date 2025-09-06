@@ -13,6 +13,12 @@ PREDEFINED_CHATBOTS = {
     }
 }
 
+PREDEFINED_MODELS = {
+    "qwen-max": "qwen-max",
+    "qwen-turbo": "qwen-turbo",
+    "qwen-plus": "qwen-plus"
+}
+
 def initialize_session_state():
     """初始化会话状态"""
     if 'messages' not in st.session_state:
@@ -21,6 +27,12 @@ def initialize_session_state():
         st.session_state.chatbot = None
     if 'selected_tools' not in st.session_state:
         st.session_state.selected_tools = []
+    if 'debug_info' not in st.session_state:
+        st.session_state.debug_info = {
+            'chat_reports': [],
+            'llm_messages': [],
+            'cot_info': []
+        }
 
 async def get_available_tools():
     """获取可用的工具"""
@@ -36,6 +48,7 @@ async def get_available_tools():
             return tools
 
 def create_control_panel():
+
     """创建左侧控制面板"""
     st.sidebar.title("🤖 对话控制面板")
     
@@ -68,14 +81,17 @@ def create_control_panel():
     # st.sidebar.subheader("模型设置")
     model = st.sidebar.selectbox(
         "选择模型:",
-        ["qwen-max", "qwen-turbo", "qwen-plus"],
+        list(PREDEFINED_MODELS.keys()),
         index=0,
         help="选择要使用的AI模型"
     )
+
+    depth_thinking = st.sidebar.checkbox("深度思考", value=True, help="启用深度思考")
+    debug_enabled = st.sidebar.checkbox("调试", value=True, help="启用调试模式")
     
     # 工具选择
     # st.sidebar.subheader("可用工具")
-    st.sidebar.write("选择要启用的工具:")
+    st.sidebar.write("选择挂载工具:")
     
     selected_tools = []
     tools = asyncio.run(get_available_tools())
@@ -91,10 +107,12 @@ def create_control_panel():
     if st.sidebar.button("🚀 创建/更新聊天机器人", type="primary"):
         if selected_tools:
             st.session_state.chatbot = chatbot.Chatbot(
-                model=model,
+                model=PREDEFINED_MODELS[model],
                 system_prompt=system_prompt,
                 tools=selected_tools,
-                context=""
+                context="",
+                depth_thinking=depth_thinking,
+                debug=debug_enabled
             )
             st.session_state.selected_tools = selected_tools
             st.session_state.messages = []  # 清空对话历史
@@ -102,18 +120,14 @@ def create_control_panel():
         else:
             st.error("❌ 请至少选择一个工具！")
     
-    # 显示当前配置
-    if st.session_state.chatbot:
-        st.sidebar.subheader("当前配置")
-        st.sidebar.write(f"**模型**: {st.session_state.chatbot.model}")
-        st.sidebar.write(f"**工具数量**: {len(st.session_state.selected_tools)}")
-        st.sidebar.write("**已选工具**:")
-        for tool in st.session_state.selected_tools:
-            st.sidebar.write(f"  - {tool.name}")
-    
     # 清空对话按钮
     if st.sidebar.button("🗑️ 清空对话历史"):
         st.session_state.messages = []
+        st.session_state.debug_info = {
+            'chat_reports': [],
+            'llm_messages': [],
+            'cot_info': []
+        }
         st.rerun()
 
 def create_chat_interface():
@@ -124,7 +138,9 @@ def create_chat_interface():
     if not st.session_state.chatbot:
         st.warning("⚠️ 请在左侧控制面板创建聊天机器人后再开始对话！")
         return
-    
+    else:
+        st.markdown(":green-badge[" + st.session_state.chatbot.model + "] " + "".join([f":violet-badge[:material/check: {tool.name}] " for tool in st.session_state.selected_tools]))
+
     # 显示对话历史
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
@@ -154,9 +170,16 @@ def create_chat_interface():
                 import nest_asyncio
                 nest_asyncio.apply()
                 
-                # 运行聊天
+                # 运行聊天并获取报告
                 loop = asyncio.get_event_loop()
-                loop.run_until_complete(st.session_state.chatbot.chat(prompt))
+                chat_report = loop.run_until_complete(st.session_state.chatbot.chat(prompt))
+                
+                # 保存调试信息
+                st.session_state.debug_info['chat_reports'].append(chat_report.to_dict())
+                st.session_state.debug_info['llm_messages'].append({
+                    'prompt': prompt,
+                    'messages': st.session_state.chatbot.messages.copy()
+                })
                 
                 # 获取最新的助手回复
                 if st.session_state.chatbot.messages:
@@ -186,6 +209,113 @@ def create_chat_interface():
         st.sidebar.write(f"🤖 助手回复: {assistant_messages}")
         st.sidebar.write(f"🔧 工具调用: {tool_calls}")
 
+def create_debug_area():
+    """创建调试区域"""
+    st.markdown("---")
+    st.subheader("🔍 调试信息")
+    
+    # 创建tab
+    tab1, tab2, tab3 = st.tabs(["📝 Messages", "📊 Chat Reports", "🧠 COT Info"])
+    
+    with tab1:
+        st.markdown("### LLM Messages 内容")
+        if st.session_state.debug_info['llm_messages']:
+            for i, msg_data in enumerate(st.session_state.debug_info['llm_messages']):
+                with st.expander(f"对话 #{i+1}: {msg_data['prompt'][:50]}..."):
+                    st.markdown("**用户输入:**")
+                    st.code(msg_data['prompt'], language="text")
+                    
+                    st.markdown("**完整 Messages:**")
+                    st.json(msg_data['messages'])
+        else:
+            st.info("暂无消息记录")
+    
+    with tab2:
+        st.markdown("### Chat Reports 历史")
+        if st.session_state.debug_info['chat_reports']:
+            # 准备表格数据
+            table_data = []
+            
+            for report_idx, report in enumerate(st.session_state.debug_info['chat_reports']):
+                for llm_call in report.get('llm_calls', []):
+                    # LLM Call 行
+                    llm_row = {
+                        "对话": f"#{report_idx + 1}",
+                        "类型": "LLM Call",
+                        "查询": llm_call.get('query', '')[:50] + "..." if len(llm_call.get('query', '')) > 50 else llm_call.get('query', ''),
+                        "耗时": llm_call.get('timecost', ''),
+                        "Token使用": llm_call.get('token_usage', {}).get('total_tokens', 0),
+                        "工具调用数": len(llm_call.get('tool_calls', [])),
+                        "响应": llm_call.get('response', '')[:80] + "..." if len(llm_call.get('response', '')) > 80 else llm_call.get('response', '')
+                    }
+                    table_data.append(llm_row)
+                    
+                    # Tool Call 行
+                    for tool_call in llm_call.get('tool_calls', []):
+                        tool_row = {
+                            "对话": f"#{report_idx + 1}",
+                            "类型": "Tool Call",
+                            "查询": tool_call.get('name', ''),
+                            "耗时": f"{tool_call.get('timecost', 0):.2f}s",
+                            "Token使用": 0,  # 改为数字0而不是字符串"-"
+                            "工具调用数": 0,  # 改为数字0而不是字符串"-"
+                             "响应": str(tool_call.get('result', ''))[:80] + "..." if len(str(tool_call.get('result', ''))) > 80 else str(tool_call.get('result', ''))
+                        }
+                        table_data.append(tool_row)
+            
+            if table_data:
+                # 创建表格
+                import pandas as pd
+                df = pd.DataFrame(table_data)
+                
+                # 显示表格
+                st.dataframe(
+                    df,
+                    width='stretch',  # 替换 use_container_width=True
+                    hide_index=True,
+                    column_config={
+                        "对话": st.column_config.TextColumn("对话", width="small"),
+                        "类型": st.column_config.TextColumn("类型", width="small"),
+                        "查询": st.column_config.TextColumn("查询/工具名", width="small"),
+                        "耗时": st.column_config.TextColumn("耗时", width="small"),
+                        "Token使用": st.column_config.NumberColumn("Token", width="small", format="%d"),
+                        "工具调用数": st.column_config.NumberColumn("工具数", width="small", format="%d"),
+                        "响应": st.column_config.TextColumn("响应/结果", width="large")
+                    }
+                )
+                
+                # 添加统计信息
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("总对话数", len(st.session_state.debug_info['chat_reports']))
+                with col2:
+                    llm_calls_count = sum(len(report.get('llm_calls', [])) for report in st.session_state.debug_info['chat_reports'])
+                    st.metric("LLM调用数", llm_calls_count)
+                with col3:
+                    tool_calls_count = sum(len(tool_call.get('tool_calls', [])) for report in st.session_state.debug_info['chat_reports'] for tool_call in report.get('llm_calls', []))
+                    st.metric("工具调用数", tool_calls_count)
+                with col4:
+                    total_tokens = sum(
+                        llm_call.get('token_usage', {}).get('total_tokens', 0) 
+                        for report in st.session_state.debug_info['chat_reports'] 
+                        for llm_call in report.get('llm_calls', [])
+                    )
+                    st.metric("总Token数", total_tokens)
+            else:
+                st.info("暂无聊天报告数据")
+        else:
+            st.info("暂无聊天报告")
+    
+    with tab3:
+        st.markdown("### Chain of Thought (COT) 信息")
+        st.info("此功能预留用于显示LLM的推理过程信息")
+        if st.session_state.debug_info['cot_info']:
+            for i, cot in enumerate(st.session_state.debug_info['cot_info']):
+                with st.expander(f"COT #{i+1}"):
+                    st.json(cot)
+        else:
+            st.info("暂无COT信息")
+
 def main():
     """主函数"""
     st.set_page_config(
@@ -206,6 +336,9 @@ def main():
     
     with col2:
         create_chat_interface()
+    
+    # 添加调试区域
+    create_debug_area()
 
 if __name__ == "__main__":
     main()

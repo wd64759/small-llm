@@ -23,7 +23,7 @@ def get_weather(location: str = "北京"):
     Returns:
         The weather for the specific location
     """
-    return f"{location}今天天气晴朗"
+    return f"{location}的天气是：多云，34度，湿度80%，下午有短时阵雨。"
 
 @app.tool()
 def get_news(location: str):
