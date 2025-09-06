@@ -22,9 +22,10 @@ class LLMCall:
         self.session_id = session_id
         self.tool_calls = []
 
-    def complete(self, query, response, timecost, token_usage):
+    def complete(self, query, response, reasoning_content, timecost, token_usage):
         self.query = query
         self.response = str(response)
+        self.reasoning_content = str(reasoning_content)
         self.timecost = f"{timecost:.2f}s"
         self.token_usage = token_usage
 
@@ -36,6 +37,7 @@ class LLMCall:
             "session_id": self.session_id,
             "query": self.query,
             "response": self.response,
+            "reasoning_content": self.reasoning_content,
             "timecost": self.timecost,
             "token_usage": self.token_usage,
             "tool_calls": [tool_call.to_dict() for tool_call in self.tool_calls]

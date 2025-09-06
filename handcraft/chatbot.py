@@ -69,6 +69,7 @@ class Chatbot:
     def _assemble_tool_calls_from_stream(self, stream_response):
         """Assemble complete tool calls from streaming response"""
         current_tool_calls = {}
+        reasoning_content = ""
         full_response = ""
         total_tokens = 0
         prompt_tokens = 0
@@ -87,7 +88,16 @@ class Chatbot:
             # 检查 choices 是否为空
             if not chunk.choices or len(chunk.choices) == 0:
                 continue
+            
             delta = chunk.choices[0].delta
+
+            if delta and "additional_kwargs" in delta:
+                additional_kwargs = delta["additional_kwargs"]
+                if "reasoning_content" in additional_kwargs:
+                    reasoning_content += additional_kwargs["reasoning_content"]
+            elif delta and "reasoning_content" in delta:
+                reasoning_content += delta.reasoning_content
+            
             if delta and delta.content:
                 full_response += delta.content
             elif delta and delta.tool_calls:
@@ -119,7 +129,7 @@ class Chatbot:
             if tool_call_data["function"]["name"]:  # Only add if name is not empty
                 tool_calls.append(tool_call_data)
         
-        return tool_calls, full_response, {"total_tokens": total_tokens, "prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens}
+        return tool_calls, full_response, reasoning_content, {"total_tokens": total_tokens, "prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens}
 
     async def _execute_tool_calls(self, tool_calls):
         """Execute tool calls and return results"""
@@ -170,11 +180,18 @@ class Chatbot:
                         thread_local.tool_call_index += 1
                         thread_local.llm_call.add_tool_call(tool_call_record)
 
+                        # 检查工具调用是否是错误的，如果是错误，则直接返回错误信息
+                        content = ""
+                        if result.isError:
+                            content = result.errorMessage
+                        else:
+                            content = result.structuredContent if hasattr(result, "structuredContent") and result.structuredContent else " ".join(t.text for t in result.content) if hasattr(result, "content") else ""
+
                         tool_results.append({
-                            "tool_call_id": tool_call["id"],
                             "role": "tool",
+                            "tool_call_id": tool_call["id"],
                             "name": tool_name,
-                            "content": str(result)
+                            "content": content
                         })
                     except Exception as e:
                         logger.error(f"Tool {tool_name} execution error: {e}", e)
@@ -232,15 +249,15 @@ class Chatbot:
             end_time = time.time()
             
             # Process streaming response
-            tool_calls, full_response, token_usage = self._assemble_tool_calls_from_stream(stream_response)
-            llm_call.complete(prompt, full_response, end_time - start_time, token_usage)
+            tool_calls, full_response, reasoning_content, token_usage = self._assemble_tool_calls_from_stream(stream_response)
+            llm_call.complete("".join([message.get("content", "") or "" for message in self.messages]), full_response, reasoning_content, end_time - start_time, token_usage)
             total_tokens += token_usage["total_tokens"]
             # If no tool calls, we're done
             if not tool_calls:
                 if full_response:
                     self.messages.append({"role": "assistant", "content": full_response})
                 break
-            
+
             # Execute tool calls
             tool_results = await self._execute_tool_calls(tool_calls)
             # If no tool results, we're done
