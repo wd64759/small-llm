@@ -77,30 +77,23 @@ class Chatbot:
 
         for chunk in stream_response:
             # DashScope API 的 usage 信息可能在不同位置
-            if hasattr(chunk, 'usage') and chunk.usage is not None:
+            if not chunk.choices:
                 if hasattr(chunk.usage, 'total_tokens'):
                     total_tokens = chunk.usage.total_tokens
                 if hasattr(chunk.usage, 'prompt_tokens'):
                     prompt_tokens = chunk.usage.prompt_tokens
                 if hasattr(chunk.usage, 'completion_tokens'):
                     completion_tokens = chunk.usage.completion_tokens
-            
-            # 检查 choices 是否为空
-            if not chunk.choices or len(chunk.choices) == 0:
                 continue
-            
-            delta = chunk.choices[0].delta
 
-            if delta and "additional_kwargs" in delta:
-                additional_kwargs = delta["additional_kwargs"]
-                if "reasoning_content" in additional_kwargs:
-                    reasoning_content += additional_kwargs["reasoning_content"]
-            elif delta and "reasoning_content" in delta:
+            # 检查 choices 是否为空
+            delta = chunk.choices[0].delta
+            if hasattr(delta, "reasoning_content") and delta.reasoning_content is not None:
                 reasoning_content += delta.reasoning_content
             
-            if delta and delta.content:
+            if hasattr(delta, "content") and delta.content:
                 full_response += delta.content
-            elif delta and delta.tool_calls:
+            elif hasattr(delta, "tool_calls") and delta.tool_calls:
                 for tool_call_delta in delta.tool_calls:
                     # Initialize tool call if not exists
                     if tool_call_delta.index not in current_tool_calls:
@@ -218,9 +211,11 @@ class Chatbot:
             "stream_options": {
                 "include_usage": True
             },
-            # "has_thoughts": self.depth_thinking and self.debug
+            "extra_body": {
+                "enable_thinking": self.depth_thinking,
+                "enable_search": False
+            }
         }
-        kwargs["extra_body"] = {"enable_thinking": self.depth_thinking}
         
         if tools:
             kwargs["tools"] = tools
@@ -304,6 +299,6 @@ if __name__ == "__main__":
     
     list_tools = asyncio.run(main())
     tools = [MCPTool(name=tool.name, description=tool.description, parameters=tool.inputSchema) for tool in list_tools.tools]
-    chatbot = Chatbot(model="qwen-max", system_prompt="", tools=tools, context="", depth_thinking=True, debug=True)
-    chat_report = asyncio.run(chatbot.chat("你好，帮我查一下今天的天气怎么样"))
+    chatbot = Chatbot(model="qwen3-32b", system_prompt="你是一个金融领域专家，请根据用户的问题进行分析，并给出具体的建议。在回答问题时，请给出你的思考过程信息。", tools=tools, context="", depth_thinking=True, debug=True)
+    chat_report = asyncio.run(chatbot.chat("本金100万如何进行股票投资，最多承受20%的回撤"))
     logger.info(json.dumps(chat_report.to_dict(), ensure_ascii=False, indent=4))

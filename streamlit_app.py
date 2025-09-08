@@ -307,14 +307,66 @@ def create_debug_area():
             st.info("暂无聊天报告")
     
     with tab3:
-        st.markdown("### Chain of Thought (COT) 信息")
-        st.info("此功能预留用于显示LLM的推理过程信息")
-        if st.session_state.debug_info['cot_info']:
-            for i, cot in enumerate(st.session_state.debug_info['cot_info']):
-                with st.expander(f"COT #{i+1}"):
-                    st.json(cot)
+        st.markdown("### Chain of Thought (COT) 推理信息")
+        
+        # 从 chat_reports 中提取推理信息
+        reasoning_data = []
+        for report_idx, report in enumerate(st.session_state.debug_info['chat_reports']):
+            for llm_call_idx, llm_call in enumerate(report.get('llm_calls', [])):
+                reasoning_content = llm_call.get('reasoning_content', '')
+                if reasoning_content and reasoning_content.strip():
+                    reasoning_data.append({
+                        '对话': f"#{report_idx + 1}",
+                        'LLM调用': f"#{llm_call_idx + 1}",
+                        '推理内容': reasoning_content,
+                        '查询': llm_call.get('query', '')[:100] + "..." if len(llm_call.get('query', '')) > 100 else llm_call.get('query', ''),
+                        '响应': llm_call.get('response', '')[:100] + "..." if len(llm_call.get('response', '')) > 100 else llm_call.get('response', ''),
+                        '耗时': llm_call.get('timecost', ''),
+                        'Token使用': llm_call.get('token_usage', {}).get('total_tokens', 0)
+                    })
+        
+        if reasoning_data:
+            # 显示统计信息
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("包含推理的LLM调用", len(reasoning_data))
+            with col2:
+                total_reasoning_tokens = sum(item['Token使用'] for item in reasoning_data)
+                st.metric("推理相关Token", total_reasoning_tokens)
+            with col3:
+                avg_reasoning_length = sum(len(item['推理内容']) for item in reasoning_data) / len(reasoning_data)
+                st.metric("平均推理长度", f"{avg_reasoning_length:.0f}字符")
+            
+            st.markdown("---")
+            
+            # 显示推理内容
+            for i, item in enumerate(reasoning_data):
+                with st.expander(f"推理 #{i+1} - 对话{item['对话']} LLM调用{item['LLM调用']}"):
+                    col1, col2 = st.columns([1, 1])
+                    
+                    with col1:
+                        st.markdown("**查询内容:**")
+                        st.text_area("查询内容", item['查询'], height=100, key=f"query_{i}", disabled=True, label_visibility="collapsed")
+                        
+                        st.markdown("**响应内容:**")
+                        st.text_area("响应内容", item['响应'], height=100, key=f"response_{i}", disabled=True, label_visibility="collapsed")
+                    
+                    with col2:
+                        st.markdown("**推理过程:**")
+                        st.text_area("推理过程", item['推理内容'], height=200, key=f"reasoning_{i}", disabled=True, label_visibility="collapsed")
+                        
+                        st.markdown("**性能指标:**")
+                        st.write(f"⏱️ 耗时: {item['耗时']}")
+                        st.write(f"🔢 Token使用: {item['Token使用']}")
+                        st.write(f"📝 推理长度: {len(item['推理内容'])} 字符")
         else:
-            st.info("暂无COT信息")
+            st.info("暂无推理信息")
+            st.markdown("""
+            **说明:**
+            - 推理信息来自LLM的 `reasoning_content` 字段
+            - 如果模型不支持推理内容输出，此区域将显示为空
+            - 当前使用的模型可能不支持推理过程展示
+            """)
 
 def main():
     """主函数"""
