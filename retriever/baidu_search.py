@@ -1,7 +1,7 @@
-from ast import List
 import asyncio
 from datetime import date, datetime
 import re
+from typing import List
 from langchain_core.tools import Tool, tool
 import os
 
@@ -58,9 +58,16 @@ class BaiduSearchTool(Tool):
 
 def search(query: str, top: int = 5):
     """
-    Search the web using Baidu Search API
+    Search the web using Baidu Search API (synchronous version)
     """
-    result = asyncio.run(_search(query, top))
+    import nest_asyncio
+    nest_asyncio.apply()
+    
+    try:
+        result = asyncio.run(_search(query, top))
+    except Exception as e:
+        print(f"Search error: {e}")
+        return []
 
     if result.is_error:
         return result.error_message
