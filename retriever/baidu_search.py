@@ -8,12 +8,12 @@ import os
 from dotenv import load_dotenv
 from fastmcp import Client
 
-from retriever.search_tools import SearchInput, SearchOutput
-
 try:
-    from .web_search_utils import load_webpage
+    from retriever.web_search_utils import load_webpage
+    from retriever.search_tools import SearchInput, SearchOutput
 except ImportError:
     from web_search_utils import load_webpage
+    from search_tools import SearchInput, SearchOutput
 
 load_dotenv()
 
@@ -79,13 +79,22 @@ def search(query: str, top: int = 5):
             pattern = r'Title:\s*(.+?)\nContent:\s*(.+?)\nURL:\s*(.+?)(?=\n\n|$)'
             matches = re.findall(pattern, content.text)
             for idx, (title, snippet, url) in enumerate(matches):
-                content = load_webpage(url)
+                try:
+                    page_content = load_webpage(url)
+                    # 如果内容获取失败，使用 snippet 作为备选
+                    if not page_content or "页面加载失败" in page_content or "安全验证" in page_content:
+                        page_content = snippet
+                        print(f"Using snippet as fallback for {url}")
+                except Exception as e:
+                    print(f"Error loading content for {url}: {e}")
+                    page_content = snippet
+                
                 rs.append({
                     "source": "baidu",
                     "id": f"{idx}-{title}",
                     "title": title,
                     "link": url,
-                    "content": content,
+                    "content": page_content,
                     "snippet": snippet,
                     "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 })
@@ -93,5 +102,5 @@ def search(query: str, top: int = 5):
 
 if __name__ == "__main__":
     # rs = asyncio.run(search_async("国内影院票房近期排名？"))
-    rs = search("国内影院票房近期排名？")
+    rs = search("A股市场流动性特征与投资策略分析？")
     print(rs)

@@ -176,7 +176,7 @@ class Chatbot:
                         # 检查工具调用是否是错误的，如果是错误，则直接返回错误信息
                         content = ""
                         if result.isError:
-                            content = result.errorMessage
+                            content = result.content[0].text if hasattr(result, "content") and result.content else ""
                         else:
                             content = result.structuredContent if hasattr(result, "structuredContent") and result.structuredContent else " ".join(t.text for t in result.content) if hasattr(result, "content") else ""
 

@@ -1,3 +1,4 @@
+from datetime import datetime
 import os
 import sys
 import asyncio
@@ -16,6 +17,13 @@ load_dotenv()
 app = FastMCP()
 
 @app.tool()
+def get_current_time():
+    """
+    Get the current time
+    """
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+@app.tool()
 def get_location():
     """
     Get user's location
@@ -23,7 +31,7 @@ def get_location():
     return "北京"
 
 @app.tool()
-def get_weather(location: str = "北京"):
+def get_weather(location: str):
     """
     Get the weather for a specific location
     Args:
