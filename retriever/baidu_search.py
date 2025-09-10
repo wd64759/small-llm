@@ -21,8 +21,7 @@ BAIDU_API_KEY = os.getenv("BAIDU_API_KEY")
 print(BAIDU_API_KEY)
 BAIDU_SEARCH = f"http://appbuilder.baidu.com/v2/ai_search/mcp/sse?api_key={BAIDU_API_KEY}"
 
-site_list = ["eastmoney.com","finance.sina.com.cn"]
-# "fund.10jqka.com.cn","sse.com.cn","sina.com.cn"
+site_list = ["eastmoney.com","finance.sina.com.cn","fund.10jqka.com.cn","sse.com.cn","sina.com.cn"]
 
 async def _search(query: str, top: int = 5):
     async with Client(BAIDU_SEARCH) as client:
@@ -32,7 +31,11 @@ async def _search(query: str, top: int = 5):
         result = await client.call_tool("AIsearch", 
             {
                 "query": query, 
-                "search_domain_filter": site_list,
+                "search_filter": {
+                    "match": {
+                        "site": site_list
+                    }
+                },
                 # useless for now
                 "instruction":"""
                     返回结果按照json格式，

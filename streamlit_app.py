@@ -10,7 +10,7 @@ PREDEFINED_CHATBOTS = {
         "model": "qwen-max",
         "system_prompt": "You are a helpful assistant. You have access to tools that you can use to help answer questions. When you need information that can be obtained through tools, please use them.",
         "description": "一个通用的AI助手，可以回答问题并使用工具"
-    }，
+    },
     "金融助手": {
         "model": "qwen-turbo",
         "system_prompt": """你是一位金融理财师。
