@@ -168,6 +168,7 @@ data/docs/
 *.index
 *.pkl
 *.pickle
+*.png
 
 # Logs
 logs/
@@ -192,3 +193,6 @@ Thumbs.db
 # Temporary files
 tmp/
 temp/ 
+
+# Chroma DB
+chroma_db/
